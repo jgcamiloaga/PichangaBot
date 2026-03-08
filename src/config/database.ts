@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from './env';
 
-// Crear un único cliente de Supabase para interactuar con la DB
 const supabaseUrl = config.supabaseUrl;
 const supabaseKey = config.supabaseKey;
 
