@@ -11,6 +11,11 @@ const client = new Client({
 setupReadyEvent(client);
 setupInteractionCreateEvent(client);
 
+// Capturar errores del WebSocket de Discord (token inválido, desconexiones, etc.)
+client.on('error', (error) => {
+    console.error('[Discord WebSocket Error]', error.message);
+});
+
 const discordToken = config.discordToken;
 console.log(`[Diagnóstico] DISCORD_TOKEN -> longitud: ${discordToken.length} caracteres`);
 
