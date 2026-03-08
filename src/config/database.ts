@@ -1,30 +1,14 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { createClient } from '@supabase/supabase-js';
+import { config } from './env';
 
-const dataFolderPath = path.join(__dirname, '../../data');
-if (!fs.existsSync(dataFolderPath)) {
-    fs.mkdirSync(dataFolderPath, { recursive: true });
+// Crear un único cliente de Supabase para interactuar con la DB
+const supabaseUrl = config.supabaseUrl;
+const supabaseKey = config.supabaseKey;
+
+if (!supabaseUrl || !supabaseKey) {
+    console.warn("⚠️ Advertencia: Variables de entorno SUPABASE_URL o SUPABASE_KEY no definidos. Asegúrate de configurarlos.");
 }
 
-const dbPath = path.join(dataFolderPath, 'pichanga.db');
-const db = new Database(dbPath);
+const supabase = createClient(supabaseUrl || '', supabaseKey || '');
 
-db.pragma('journal_mode = WAL'); 
-
-db.exec(`
-    CREATE TABLE IF NOT EXISTS apodos (
-        guildId TEXT NOT NULL,
-        userId TEXT NOT NULL,
-        nickname TEXT NOT NULL,
-        PRIMARY KEY (guildId, userId)
-    );
-
-    CREATE TABLE IF NOT EXISTS partidos_activos (
-        messageId TEXT PRIMARY KEY,
-        channelId TEXT NOT NULL,
-        guildId TEXT NOT NULL
-    );
-`);
-
-export default db;
+export default supabase;

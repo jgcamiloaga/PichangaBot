@@ -1,4 +1,4 @@
-import db from '../config/database';
+import supabase from '../config/database';
 
 export interface ActiveMatch {
     messageId: string;
@@ -6,19 +6,32 @@ export interface ActiveMatch {
     guildId: string;
 }
 
-export const saveActiveMatch = (messageId: string, channelId: string, guildId: string): void => {
-    console.log(`[DB] Guardando partido activo: MsgID=${messageId}, Canal=${channelId}, Guild=${guildId}`);
-    const stmt = db.prepare(`
-        INSERT OR IGNORE INTO partidos_activos (messageId, channelId, guildId)
-        VALUES (?, ?, ?)
-    `);
+export const saveActiveMatch = async (messageId: string, channelId: string, guildId: string): Promise<void> => {
+    console.log(`[DB] Guardando partido activo en Supabase: MsgID=${messageId}, Canal=${channelId}, Guild=${guildId}`);
     
-    stmt.run(messageId, channelId, guildId);
+    const { error } = await supabase
+        .from('partidos_activos')
+        .insert([{ messageId, channelId, guildId }]);
+        
+    if (error) {
+        // Ignoramos errores de clave duplicada
+        if (error.code !== '23505') { 
+            console.error('[DB Error] guardando partido activo:', error);
+        }
+    }
 };
 
-export const getActiveMatches = (guildId: string): ActiveMatch[] => {
-    const stmt = db.prepare('SELECT messageId, channelId, guildId FROM partidos_activos WHERE guildId = ?');
-    const matches = stmt.all(guildId) as ActiveMatch[];
-    console.log(`[DB] Encontrados ${matches.length} partidos activos para el Guild=${guildId}`);
-    return matches;
+export const getActiveMatches = async (guildId: string): Promise<ActiveMatch[]> => {
+    const { data, error } = await supabase
+        .from('partidos_activos')
+        .select('messageId, channelId, guildId')
+        .eq('guildId', guildId);
+        
+    if (error) {
+        console.error('[DB Error] obteniendo partidos activos:', error);
+        return [];
+    }
+    
+    console.log(`[DB] Encontrados ${data?.length || 0} partidos activos para el Guild=${guildId}`);
+    return data as ActiveMatch[];
 };

@@ -54,7 +54,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             }
             
             if (interaction.guild) {
-                currentPlayers = refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
+                currentPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
             }
 
             updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
@@ -130,7 +130,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             
             if (interaction.guild) {
                 const message = await interaction.fetchReply();
-                saveActiveMatch(message.id, interaction.channelId!, interaction.guild.id);
+                await saveActiveMatch(message.id, interaction.channelId!, interaction.guild.id);
             }
         } else if (isEdit) {
             let originalMatchMessage = interaction.message;

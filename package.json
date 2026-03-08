@@ -10,13 +10,14 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
     "axios": "^1.13.6",
-    "better-sqlite3": "^12.6.2",
     "discord.js": "^14.25.1",
-    "dotenv": "^17.3.1"
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
     "@types/node": "^25.3.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

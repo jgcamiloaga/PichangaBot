@@ -15,7 +15,7 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
         if (interaction.customId === 'btn_join') {
             if (currentPlayers.includes(`• ${userMention}`)) {
                 if (interaction.guild) {
-                    currentPlayers = refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
+                    currentPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
                     updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
                 }
                 await interaction.update({ embeds: [updatedEmbed] });
@@ -40,7 +40,7 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
             let playerEntry = userMention;
 
             if (interaction.guild) {
-                const nickname = getNickname(interaction.guild.id, interaction.user.id);
+                const nickname = await getNickname(interaction.guild.id, interaction.user.id);
                 if (nickname) {
                     playerEntry += ` (${nickname})`;
                 }
@@ -126,7 +126,7 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
         }
 
         if (interaction.guild) {
-            currentPlayers = refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
+            currentPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
         }
         updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
         await interaction.update({ embeds: [updatedEmbed] });

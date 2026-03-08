@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits } from 'discord.js';
+import express from 'express';
 import { config } from './config/env';
 import { setupReadyEvent } from './events/ready';
 import { setupInteractionCreateEvent } from './events/interactionCreate';
@@ -11,3 +12,12 @@ setupReadyEvent(client);
 setupInteractionCreateEvent(client);
 
 client.login(config.discordToken);
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => res.send('PichangaBot está vivo y pateando! ⚽'));
+
+app.listen(port, () => {
+    console.log(`[Express] Servidor web escuchando en el puerto ${port}`);
+});

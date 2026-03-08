@@ -1,44 +1,65 @@
-import db from '../config/database';
+import supabase from '../config/database';
 
-export const saveNickname = (guildId: string, userId: string, nickname: string): void => {
-    const stmt = db.prepare(`
-        INSERT INTO apodos (guildId, userId, nickname)
-        VALUES (?, ?, ?)
-        ON CONFLICT(guildId, userId) DO UPDATE SET nickname = excluded.nickname
-    `);
+export const saveNickname = async (guildId: string, userId: string, nickname: string): Promise<void> => {
+    const { error } = await supabase
+        .from('apodos')
+        .upsert({ guildId, userId, nickname }, { onConflict: 'guildId,userId' });
     
-    stmt.run(guildId, userId, nickname);
+    if (error) {
+        console.error('[DB Error] guardando apodo:', error);
+    }
 };
 
-export const getNickname = (guildId: string, userId: string): string | null => {
-    const stmt = db.prepare('SELECT nickname FROM apodos WHERE guildId = ? AND userId = ?');
-    const row = stmt.get(guildId, userId) as { nickname: string } | undefined;
+export const getNickname = async (guildId: string, userId: string): Promise<string | null> => {
+    const { data, error } = await supabase
+        .from('apodos')
+        .select('nickname')
+        .eq('guildId', guildId)
+        .eq('userId', userId)
+        .single();
     
-    return row ? row.nickname : null;
+    if (error && error.code !== 'PGRST116') { // PGRST116 es "no matching rows"
+        console.error('[DB Error] obteniendo apodo:', error);
+    }
+    return data ? data.nickname : null;
 };
 
-export const removeNickname = (guildId: string, userId: string): void => {
-    const stmt = db.prepare('DELETE FROM apodos WHERE guildId = ? AND userId = ?');
-    stmt.run(guildId, userId);
+export const removeNickname = async (guildId: string, userId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('apodos')
+        .delete()
+        .eq('guildId', guildId)
+        .eq('userId', userId);
+        
+    if (error) {
+        console.error('[DB Error] eliminando apodo:', error);
+    }
 };
 
-export const refreshPlayerListNicknames = (currentPlayers: string, guildId: string): string => {
+export const refreshPlayerListNicknames = async (currentPlayers: string, guildId: string): Promise<string> => {
     if (currentPlayers === 'Nadie se ha inscrito aún... ¡Sé el primero!') return currentPlayers;
     
-    return currentPlayers.split('\n').map(line => {
+    // Process line by line since each might need an async DB query
+    const lines = currentPlayers.split('\n');
+    const newLines = [];
+    
+    for (const line of lines) {
         const match = line.match(/<@(\d+)>/);
         if (match) {
             const userId = match[1];
-            const nickname = getNickname(guildId, userId);
+            const nickname = await getNickname(guildId, userId);
             
             const isGuest = line.includes('Invitado de');
             
             if (isGuest) {
-                return nickname ? `• Invitado de <@${userId}> (${nickname})` : `• Invitado de <@${userId}>`;
+                newLines.push(nickname ? `• Invitado de <@${userId}> (${nickname})` : `• Invitado de <@${userId}>`);
             } else {
-                return nickname ? `• <@${userId}> (${nickname})` : `• <@${userId}>`;
+                newLines.push(nickname ? `• <@${userId}> (${nickname})` : `• <@${userId}>`);
             }
+        } else {
+            newLines.push(line);
         }
-        return line;
-    }).join('\n');
+    }
+    
+    return newLines.join('\n');
 };

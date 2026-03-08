@@ -22,10 +22,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const nickname = interaction.options.getString('texto', true);
     
     try {
-        saveNickname(interaction.guild.id, interaction.user.id, nickname);
+        await saveNickname(interaction.guild.id, interaction.user.id, nickname);
         await interaction.reply({ content: `✅ ¡Tu apodo ha sido guardado como **"${nickname}"**! A partir de ahora aparecerás así en las listas de las pichangas de este servidor.`, ephemeral: true });
 
-        const activeMatches = getActiveMatches(interaction.guild.id);
+        const activeMatches = await getActiveMatches(interaction.guild.id);
         for (const matchDef of activeMatches) {
             try {
                 const channel = interaction.client.channels.cache.get(matchDef.channelId) || await interaction.client.channels.fetch(matchDef.channelId);
@@ -40,7 +40,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
                         if (fieldIndex !== undefined && fieldIndex !== -1 && embed.data.fields) {
                             const currentPlayers = embed.data.fields[fieldIndex].value;
-                            const newPlayers = refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
+                            const newPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
                             
                             if (currentPlayers !== newPlayers) {
                                 console.log(`[Apodo] Actualizando embed del mensaje ${matchDef.messageId}`);

@@ -13,10 +13,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
     
     try {
-        removeNickname(interaction.guild.id, interaction.user.id);
+        await removeNickname(interaction.guild.id, interaction.user.id);
         await interaction.reply({ content: `✅ ¡Tu apodo ha sido eliminado correctamente! A partir de ahora aparecerás con tu nombre estándar de Discord en las listas de este servidor.`, ephemeral: true });
 
-        const activeMatches = getActiveMatches(interaction.guild.id);
+        const activeMatches = await getActiveMatches(interaction.guild.id);
         for (const matchDef of activeMatches) {
             try {
                 const channel = interaction.client.channels.cache.get(matchDef.channelId) || await interaction.client.channels.fetch(matchDef.channelId);
@@ -31,7 +31,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
                         if (fieldIndex !== undefined && fieldIndex !== -1 && embed.data.fields) {
                             const currentPlayers = embed.data.fields[fieldIndex].value;
-                            const newPlayers = refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
+                            const newPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
                             
                             if (currentPlayers !== newPlayers) {
                                 console.log(`[Apodo-Borrar] Actualizando embed del mensaje ${matchDef.messageId}`);
