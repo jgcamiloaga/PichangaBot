@@ -11,9 +11,16 @@ const client = new Client({
 setupReadyEvent(client);
 setupInteractionCreateEvent(client);
 
-client.login(config.discordToken).catch(error => {
-    console.error('[Discord Error] No se pudo iniciar sesión en Discord:', error);
-});
+const discordToken = config.discordToken;
+console.log(`[Diagnóstico] DISCORD_TOKEN -> longitud: ${discordToken.length} caracteres`);
+
+if (!discordToken) {
+    console.error('[Error Fatal] DISCORD_TOKEN está vacío. Verifica las variables de entorno en Render.');
+} else {
+    client.login(discordToken).catch(error => {
+        console.error('[Discord Error] No se pudo iniciar sesión:', error.message);
+    });
+}
 
 const app = express();
 const port = process.env.PORT || 3000;
