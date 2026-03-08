@@ -22,9 +22,21 @@ console.log(`[Diagnóstico] DISCORD_TOKEN -> longitud: ${discordToken.length} ca
 if (!discordToken) {
     console.error('[Error Fatal] DISCORD_TOKEN está vacío. Verifica las variables de entorno en Render.');
 } else {
-    client.login(discordToken).catch(error => {
-        console.error('[Discord Error] No se pudo iniciar sesión:', error.message);
-    });
+    console.log('[Info] Intentando conectar con Discord...');
+
+    const loginTimeout = setTimeout(() => {
+        console.error('[Error Red] La conexión a Discord tardó más de 30s. Posible bloqueo de red en Render.');
+    }, 30000);
+
+    client.login(discordToken)
+        .then(() => {
+            clearTimeout(loginTimeout);
+            console.log('[Info] Login enviado, esperando evento ready de Discord...');
+        })
+        .catch(error => {
+            clearTimeout(loginTimeout);
+            console.error('[Discord Error] No se pudo iniciar sesión:', error.message);
+        });
 }
 
 const app = express();
