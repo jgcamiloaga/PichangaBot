@@ -11,7 +11,9 @@ const client = new Client({
 setupReadyEvent(client);
 setupInteractionCreateEvent(client);
 
-client.login(config.discordToken);
+client.login(config.discordToken).catch(error => {
+    console.error('[Discord Error] No se pudo iniciar sesión en Discord:', error);
+});
 
 const app = express();
 const port = process.env.PORT || 3000;
