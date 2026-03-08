@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ override: false });
 
 export const config = {
     discordToken: process.env.DISCORD_TOKEN || '',
