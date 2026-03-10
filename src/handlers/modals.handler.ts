@@ -1,7 +1,8 @@
 import { ModalSubmitInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { getRandomFootballImage } from '../services/unsplash.service';
-import { refreshPlayerListNicknames } from '../services/nickname.service';
+import { getNickname, refreshPlayerListNicknames } from '../services/nickname.service';
 import { saveActiveMatch } from '../services/match.service';
+import { parseMatchDate, isDateInPast, isValidSpots, getDiscordTimestamp, EMPTY_LIST_MSG, parseAvailableSpots, updateSpotsField, countPlayers } from '../services/validation.service';
 
 export const handleModals = async (interaction: ModalSubmitInteraction) => {
     if (interaction.customId === 'modal_add_guests') {
@@ -9,7 +10,12 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
         const guestsCount = parseInt(guestsCountStr, 10);
 
         if (isNaN(guestsCount) || guestsCount <= 0) {
-            await interaction.reply({ content: 'Por favor, ingresa un número válido mayor a 0. 😅', ephemeral: true });
+            await interaction.reply({ content: '❌ Por favor, ingresa un número válido mayor a 0. 😅', ephemeral: true });
+            return;
+        }
+
+        if (guestsCount > 10) {
+            await interaction.reply({ content: '❌ No puedes llevar más de **10 invitados** a la vez. 😅', ephemeral: true });
             return;
         }
 
@@ -25,43 +31,52 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             let currentPlayers = updatedEmbed.data.fields[fieldIndex].value;
             const userMention = `<@${interaction.user.id}>`;
 
+            const alreadyInList = currentPlayers.includes(`• ${userMention}`);
+            const slotsNeeded = guestsCount + (alreadyInList ? 0 : 1);
+
             if (spotsFieldIndex !== undefined && spotsFieldIndex !== -1) {
-                const maxSpotsStr = updatedEmbed.data.fields[spotsFieldIndex].value;
-                const maxSpots = parseInt(maxSpotsStr.replace(/\*/g, ''), 10);
-
-                const currentPlayersCount = currentPlayers === 'Nadie se ha inscrito aún... ¡Sé el primero!'
-                    ? 0
-                    : currentPlayers.split('\n').length;
-
-                if (!isNaN(maxSpots)) {
-                    const cuposRestantes = maxSpots - currentPlayersCount;
-                    if (guestsCount > cuposRestantes) {
-                        await interaction.reply({
-                            content: `¡Lo siento! Solo quedan **${cuposRestantes}** cupos disponibles. No puedes llevar a ${guestsCount} invitados. 😢`,
-                            ephemeral: true
-                        });
-                        return;
-                    }
+                const available = parseAvailableSpots(updatedEmbed.data.fields[spotsFieldIndex].value);
+                if (!isNaN(available) && slotsNeeded > available) {
+                    const msg = alreadyInList
+                        ? `¡Lo siento! Solo quedan **${available}** cupos disponibles. No puedes llevar a ${guestsCount} invitados. 😢`
+                        : `¡Lo siento! Solo quedan **${available}** cupos disponibles (incluyendo el tuyo). No puedes llevar a ${guestsCount} invitados. 😢`;
+                    await interaction.reply({ content: msg, ephemeral: true });
+                    return;
                 }
             }
 
-            if (currentPlayers === 'Nadie se ha inscrito aún... ¡Sé el primero!') {
+            if (interaction.isFromMessage()) {
+                await interaction.deferUpdate();
+            }
+
+            if (currentPlayers === EMPTY_LIST_MSG) {
                 currentPlayers = '';
+            }
+
+            if (!alreadyInList) {
+                let playerEntry = userMention;
+                if (interaction.guild) {
+                    const nickname = await getNickname(interaction.guild.id, interaction.user.id);
+                    if (nickname) playerEntry += ` (${nickname})`;
+                }
+                currentPlayers += (currentPlayers ? '\n' : '') + `• ${playerEntry}`;
             }
 
             for (let i = 0; i < guestsCount; i++) {
                 currentPlayers += (currentPlayers ? '\n' : '') + `• Invitado de ${userMention}`;
             }
-            
+
             if (interaction.guild) {
                 currentPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
             }
 
             updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
 
-            if (interaction.isFromMessage()) {
-                await interaction.update({ embeds: [updatedEmbed] });
+            if (spotsFieldIndex !== undefined && spotsFieldIndex !== -1 && updatedEmbed.data.fields) {
+                updatedEmbed.data.fields[spotsFieldIndex].value = updateSpotsField(updatedEmbed.data.fields[spotsFieldIndex].value, -slotsNeeded);
             }
+
+            await interaction.editReply({ embeds: [updatedEmbed] });
         }
         return;
     }
@@ -72,15 +87,41 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
     if (isCreate || isEdit) {
         const prefix = isCreate ? 'input_match_' : 'input_edit_';
         const matchName = interaction.fields.getTextInputValue(`${prefix}name`);
-        const datetime = interaction.fields.getTextInputValue(`${prefix}datetime`);
+        const datetimeRaw = interaction.fields.getTextInputValue(`${prefix}datetime`);
         const location = interaction.fields.getTextInputValue(`${prefix}location`);
-        const spots = interaction.fields.getTextInputValue(`${prefix}spots`);
+        const spotsRaw = interaction.fields.getTextInputValue(`${prefix}spots`);
+
+        const parsedDate = parseMatchDate(datetimeRaw);
+        if (!parsedDate) {
+            await interaction.reply({
+                content: '❌ **Formato de fecha inválido.**\nUsa el formato `DD/MM/YYYY HH:mm`\nEjemplo: `15/03/2025 18:30`',
+                ephemeral: true
+            });
+            return;
+        }
+
+        if (isDateInPast(parsedDate)) {
+            await interaction.reply({
+                content: '❌ **No puedes crear un partido en el pasado.**\nElige una fecha y hora futura.',
+                ephemeral: true
+            });
+            return;
+        }
+
+        if (!isValidSpots(spotsRaw)) {
+            await interaction.reply({
+                content: '❌ **Cantidad de jugadores inválida.**\nDebe ser un número entero entre **2 y 50**.',
+                ephemeral: true
+            });
+            return;
+        }
 
         const locationValue = location.startsWith('http://') || location.startsWith('https://')
             ? `[Ver en Google Maps](${location})`
             : location;
 
-        const imageUrl = await getRandomFootballImage();
+        const discordTimestamp = getDiscordTimestamp(parsedDate);
+        const spots = parseInt(spotsRaw.trim(), 10);
 
         const matchEmbed = new EmbedBuilder()
             .setAuthor({
@@ -90,12 +131,11 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             .setTitle(`⚽ ${matchName.toUpperCase()} ⚽`)
             .setDescription('¡Preparate para el mejor partido de la semana! Revisa los detalles abajo y asegura tu cupo antes de que se acaben.')
             .setColor('#FF5733')
-            .setImage(imageUrl)
             .addFields(
-                { name: '🗓️ Fecha y Hora', value: `\`${datetime}\``, inline: true },
+                { name: '🗓️ Fecha y Hora', value: discordTimestamp, inline: true },
                 { name: '📍 Ubicación', value: locationValue, inline: true },
-                { name: '👥 Cupos Totales', value: `**${spots}**`, inline: true },
-                { name: '📋 Lista de Jugadores', value: 'Nadie se ha inscrito aún... ¡Sé el primero!' }
+                { name: '👥 Cupos Totales', value: `**${spots} / ${spots}**`, inline: true },
+                { name: '📋 Lista de Jugadores', value: EMPTY_LIST_MSG }
             )
             .setFooter({ text: 'Usa los botones de abajo para confirmar', iconURL: interaction.client.user?.displayAvatarURL() })
             .setTimestamp();
@@ -123,26 +163,32 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
         const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(btnJoin, btnLeave, btnAddGuests, btnEdit);
 
         if (isCreate) {
-            await interaction.reply({
-                embeds: [matchEmbed],
-                components: [actionRow]
-            });
-            
-            if (interaction.guild) {
-                const message = await interaction.fetchReply();
-                await saveActiveMatch(message.id, interaction.channelId!, interaction.guild.id);
+            await interaction.deferReply();
+            try {
+                const imageUrl = await getRandomFootballImage();
+                if (imageUrl) matchEmbed.setImage(imageUrl);
+
+                await interaction.editReply({
+                    embeds: [matchEmbed],
+                    components: [actionRow]
+                });
+
+                if (interaction.guild) {
+                    const message = await interaction.fetchReply();
+                    await saveActiveMatch(message.id, interaction.channelId!, interaction.guild.id);
+                }
+            } catch (err) {
+                console.error('Error al crear el partido:', err);
+                await interaction.editReply({ content: '❌ Ocurrió un error al crear el partido. Por favor intenta de nuevo.' });
             }
         } else if (isEdit) {
+            const matchId = interaction.customId.replace('modal_edit_match_', '');
             let originalMatchMessage = interaction.message;
-
-            if (interaction.customId.startsWith('modal_edit_match_')) {
-                 const matchId = interaction.customId.replace('modal_edit_match_', '');
-                 try {
-                      const fetchedMessage = await interaction.channel?.messages.fetch(matchId);
-                      if (fetchedMessage) originalMatchMessage = fetchedMessage;
-                 } catch (e) {
-                      console.error('Error fetching original message', e);
-                 }
+            try {
+                const fetched = await interaction.channel?.messages.fetch(matchId);
+                if (fetched) originalMatchMessage = fetched;
+            } catch (e) {
+                console.error('Error fetching original message', e);
             }
 
             if (!originalMatchMessage) return;
@@ -150,10 +196,26 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             const originalEmbed = originalMatchMessage.embeds[0];
             const playersField = originalEmbed.data.fields?.find(f => f.name === '📋 Lista de Jugadores');
 
+            if (playersField) {
+                const currentPlayerCount = countPlayers(playersField.value);
+                if (spots < currentPlayerCount) {
+                    await interaction.reply({
+                        content: `❌ **No puedes reducir los cupos a ${spots}.** Ya hay **${currentPlayerCount}** jugadores inscritos. El mínimo permitido es **${currentPlayerCount}**.`,
+                        ephemeral: true
+                    });
+                    return;
+                }
+            }
+
             if (playersField && matchEmbed.data.fields) {
                 const playersIndex = matchEmbed.data.fields.findIndex(f => f.name === '📋 Lista de Jugadores');
                 if (playersIndex !== -1) {
                     matchEmbed.data.fields[playersIndex].value = playersField.value;
+                }
+
+                const spotsIndex = matchEmbed.data.fields.findIndex(f => f.name === '👥 Cupos Totales');
+                if (spotsIndex !== -1) {
+                    matchEmbed.data.fields[spotsIndex].value = `**${spots - countPlayers(playersField.value)} / ${spots}**`;
                 }
             }
 
@@ -162,16 +224,8 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             }
 
             const oldActionRow = originalMatchMessage.components[0];
-
-            if (interaction.customId.startsWith('modal_edit_match_')) {
-                 await originalMatchMessage.edit({ embeds: [matchEmbed], components: [oldActionRow as any] });
-                 await interaction.reply({ content: '✅ ¡Detalles del partido actualizados exitosamente!', ephemeral: true });
-            } else if (interaction.isFromMessage()) {
-                await interaction.update({
-                    embeds: [matchEmbed],
-                    components: [oldActionRow as any]
-                });
-            }
+            await originalMatchMessage.edit({ embeds: [matchEmbed], components: [oldActionRow as any] });
+            await interaction.reply({ content: '✅ ¡Detalles del partido actualizados exitosamente!', ephemeral: true });
         }
     }
 };
