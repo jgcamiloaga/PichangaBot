@@ -1,5 +1,6 @@
 import { ButtonInteraction, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
 import { getNickname, refreshPlayerListNicknames } from '../services/nickname.service';
+import { extractUnixFromDiscordTimestamp, EMPTY_LIST_MSG, parseAvailableSpots, updateSpotsField } from '../services/validation.service';
 
 export const handleButtons = async (interaction: ButtonInteraction) => {
     const originalEmbed = interaction.message.embeds[0];
@@ -11,6 +12,27 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
     if (fieldIndex !== undefined && fieldIndex !== -1 && updatedEmbed.data.fields) {
         let currentPlayers = updatedEmbed.data.fields[fieldIndex].value;
         const userMention = `<@${interaction.user.id}>`;
+
+        const isMatchAction = interaction.customId === 'btn_join' || interaction.customId === 'btn_leave' || interaction.customId === 'btn_add_guests';
+        if (isMatchAction) {
+            const dateFieldIndex = updatedEmbed.data.fields?.findIndex(f => f.name === '🗓️ Fecha y Hora');
+            if (dateFieldIndex !== undefined && dateFieldIndex !== -1) {
+                const dateFieldValue = updatedEmbed.data.fields[dateFieldIndex].value;
+                const unix = extractUnixFromDiscordTimestamp(dateFieldValue);
+                if (unix !== null && unix * 1000 < Date.now()) {
+                    const finishedMessages: Record<string, string> = {
+                        'btn_join':       '🔒 **Este partido ya ha terminado.** No puedes unirte a un partido finalizado.',
+                        'btn_leave':      '🔒 **Este partido ya ha terminado.** No puedes bajarte de un partido finalizado.',
+                        'btn_add_guests': '🔒 **Este partido ya ha terminado.** No puedes agregar invitados a un partido finalizado.',
+                    };
+                    await interaction.reply({
+                        content: finishedMessages[interaction.customId],
+                        ephemeral: true
+                    });
+                    return;
+                }
+            }
+        }
 
         if (interaction.customId === 'btn_join') {
             if (currentPlayers.includes(`• ${userMention}`)) {
@@ -24,14 +46,8 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
             }
 
             if (spotsFieldIndex !== undefined && spotsFieldIndex !== -1) {
-                const maxSpotsStr = updatedEmbed.data.fields[spotsFieldIndex].value;
-                const maxSpots = parseInt(maxSpotsStr.replace(/\*/g, ''), 10);
-
-                const currentPlayersCount = currentPlayers === 'Nadie se ha inscrito aún... ¡Sé el primero!'
-                    ? 0
-                    : currentPlayers.split('\n').length;
-
-                if (!isNaN(maxSpots) && currentPlayersCount >= maxSpots) {
+                const available = parseAvailableSpots(updatedEmbed.data.fields[spotsFieldIndex].value);
+                if (!isNaN(available) && available <= 0) {
                     await interaction.reply({ content: '¡Lo siento! Ya no quedan cupos para este partido. 😢', ephemeral: true });
                     return;
                 }
@@ -46,10 +62,14 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
                 }
             }
 
-            if (currentPlayers === 'Nadie se ha inscrito aún... ¡Sé el primero!') {
+            if (currentPlayers === EMPTY_LIST_MSG) {
                 currentPlayers = `• ${playerEntry}`;
             } else {
                 currentPlayers += `\n• ${playerEntry}`;
+            }
+
+            if (spotsFieldIndex !== undefined && spotsFieldIndex !== -1 && updatedEmbed.data.fields) {
+                updatedEmbed.data.fields[spotsFieldIndex].value = updateSpotsField(updatedEmbed.data.fields[spotsFieldIndex].value, -1);
             }
         }
         else if (interaction.customId === 'btn_leave') {
@@ -58,22 +78,23 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
                 return;
             }
 
-            currentPlayers = currentPlayers
-                .split('\n')
+            const allLines = currentPlayers.split('\n');
+            const removedCount = allLines.filter(p => p.includes(userMention)).length;
+
+            currentPlayers = allLines
                 .filter(p => !p.includes(userMention))
                 .join('\n')
                 .trim();
 
             if (currentPlayers === '') {
-                currentPlayers = 'Nadie se ha inscrito aún... ¡Sé el primero!';
+                currentPlayers = EMPTY_LIST_MSG;
+            }
+
+            if (spotsFieldIndex !== undefined && spotsFieldIndex !== -1 && updatedEmbed.data.fields) {
+                updatedEmbed.data.fields[spotsFieldIndex].value = updateSpotsField(updatedEmbed.data.fields[spotsFieldIndex].value, removedCount);
             }
         }
         else if (interaction.customId === 'btn_add_guests') {
-            if (!currentPlayers.includes(`• ${userMention}`)) {
-                await interaction.reply({ content: '¡Tienes que apuntarte tú primero dándole a "Me apunto!" antes de llevar invitados! ⚽', ephemeral: true });
-                return;
-            }
-
             const modal = new ModalBuilder()
                 .setCustomId('modal_add_guests')
                 .setTitle('Llevar Invitados');
@@ -119,9 +140,8 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
             await interaction.reply({
                 content: '¿Qué opción te gustaría modificar en tu partido?',
                 components: [selectRow],
-                ephemeral: true 
+                ephemeral: true
             });
-            
             return;
         }
 
