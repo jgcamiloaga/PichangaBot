@@ -1,4 +1,5 @@
 import supabase from '../config/database';
+import { EMPTY_LIST_MSG } from './validation.service';
 
 export const saveNickname = async (guildId: string, userId: string, nickname: string): Promise<void> => {
     const { error } = await supabase
@@ -37,7 +38,7 @@ export const removeNickname = async (guildId: string, userId: string): Promise<v
 };
 
 export const refreshPlayerListNicknames = async (currentPlayers: string, guildId: string): Promise<string> => {
-    if (currentPlayers === 'Nadie se ha inscrito aún... ¡Sé el primero!') return currentPlayers;
+    if (currentPlayers === EMPTY_LIST_MSG) return currentPlayers;
 
     const lines = currentPlayers.split('\n');
     const newLines = [];
