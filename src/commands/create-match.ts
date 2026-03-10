@@ -25,8 +25,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const dateTimeInput = new TextInputBuilder()
         .setCustomId('input_match_datetime')
-        .setLabel("Fecha y Hora")
-        .setPlaceholder("Ej: Viernes 20:00, o 24/10 8pm")
+        .setLabel("Fecha y Hora (DD/MM/YYYY HH:mm)")
+        .setPlaceholder("Ej: 15/03/2025 18:30")
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
@@ -39,7 +39,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const spotsInput = new TextInputBuilder()
         .setCustomId('input_match_spots')
-        .setLabel("¿Cuántos jugadores en total?")
+        .setLabel("¿Cuántos jugadores en total? (2-50)")
         .setPlaceholder("Ej: 10")
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
