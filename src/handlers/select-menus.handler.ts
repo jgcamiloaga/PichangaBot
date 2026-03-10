@@ -1,5 +1,6 @@
 import { StringSelectMenuInteraction, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
 import { getRandomFootballImage } from '../services/unsplash.service';
+import { extractUnixFromDiscordTimestamp, formatDateForInput, parseAvailableSpots } from '../services/validation.service';
 
 export const handleSelectMenus = async (interaction: StringSelectMenuInteraction) => {
     if (interaction.customId === 'sel_edit_match') {
@@ -23,9 +24,11 @@ export const handleSelectMenus = async (interaction: StringSelectMenuInteraction
             if (selectedOption === 'edit_details') {
                 const currentTitle = updatedEmbed.data.title?.replace('⚽ ', '').replace(' ⚽', '') || '';
                 const dateFieldIndex = updatedEmbed.data.fields?.findIndex(field => field.name === '🗓️ Fecha y Hora');
-                const currentDate = (dateFieldIndex !== undefined && dateFieldIndex !== -1 && updatedEmbed.data.fields) 
-                    ? updatedEmbed.data.fields[dateFieldIndex].value.replace(/\`/g, '') 
-                    : '';
+                let currentDate = '';
+                if (dateFieldIndex !== undefined && dateFieldIndex !== -1 && updatedEmbed.data.fields) {
+                    const unix = extractUnixFromDiscordTimestamp(updatedEmbed.data.fields[dateFieldIndex].value);
+                    if (unix !== null) currentDate = formatDateForInput(new Date(unix * 1000));
+                }
 
                 const locFieldIndex = updatedEmbed.data.fields?.findIndex(field => field.name === '📍 Ubicación');
                 let currentLocation = (locFieldIndex !== undefined && locFieldIndex !== -1 && updatedEmbed.data.fields) 
@@ -35,9 +38,11 @@ export const handleSelectMenus = async (interaction: StringSelectMenuInteraction
                 if (linkMatch) currentLocation = linkMatch[1];
 
                 const spotsFieldIdx = updatedEmbed.data.fields?.findIndex(field => field.name === '👥 Cupos Totales');
-                const currentSpots = (spotsFieldIdx !== undefined && spotsFieldIdx !== -1 && updatedEmbed.data.fields) 
-                    ? updatedEmbed.data.fields[spotsFieldIdx].value.replace(/\*/g, '') 
+                const spotsRaw = (spotsFieldIdx !== undefined && spotsFieldIdx !== -1 && updatedEmbed.data.fields)
+                    ? updatedEmbed.data.fields[spotsFieldIdx].value
                     : '';
+                const total = spotsRaw.includes('/') ? spotsRaw.split('/')[1].replace(/\*/g, '').trim() : spotsRaw.replace(/\*/g, '').trim();
+                const currentSpots = total;
 
                 const modal = new ModalBuilder()
                     .setCustomId(`modal_edit_match_${originalMatchMessage.id}`)
@@ -60,16 +65,22 @@ export const handleSelectMenus = async (interaction: StringSelectMenuInteraction
 
             } else if (selectedOption === 'change_image') {
                 await interaction.deferUpdate();
-                
-                const newImageUrl = await getRandomFootballImage();
-                updatedEmbed.setImage(newImageUrl);
-                
-                await originalMatchMessage.edit({ embeds: [updatedEmbed] });
-                await interaction.editReply({ content: '✅ Imagen actualizada correctamente en el partido.', components: [] });
+                try {
+                    const newImageUrl = await getRandomFootballImage();
+                    updatedEmbed.setImage(newImageUrl);
+                    await originalMatchMessage.edit({ embeds: [updatedEmbed] });
+                    await interaction.editReply({ content: '✅ Imagen actualizada correctamente en el partido.', components: [] });
+                } catch (imgError) {
+                    console.error('Error al cambiar imagen:', imgError);
+                    await interaction.editReply({ content: '❌ Hubo un error al obtener la imagen. Inténtalo de nuevo en unos momentos.', components: [] });
+                }
                 return;
             }
         } catch (e) {
-             await interaction.reply({ content: 'Hubo un error al accesar al mensaje del partido.', ephemeral: true });
+            console.error('Error en sel_edit_match:', e);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: 'Hubo un error al acceder al mensaje del partido.', ephemeral: true });
+            }
         }
     }
 };
