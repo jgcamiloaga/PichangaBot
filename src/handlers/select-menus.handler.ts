@@ -1,6 +1,6 @@
 import { StringSelectMenuInteraction, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
 import { getRandomFootballImage } from '../services/unsplash.service';
-import { extractUnixFromDiscordTimestamp, formatDateForInput, parseAvailableSpots } from '../services/validation.service';
+import { extractUnixFromDiscordTimestamp, formatDateForInput } from '../services/validation.service';
 
 export const handleSelectMenus = async (interaction: StringSelectMenuInteraction) => {
     if (interaction.customId === 'sel_edit_match') {
@@ -41,8 +41,7 @@ export const handleSelectMenus = async (interaction: StringSelectMenuInteraction
                 const spotsRaw = (spotsFieldIdx !== undefined && spotsFieldIdx !== -1 && updatedEmbed.data.fields)
                     ? updatedEmbed.data.fields[spotsFieldIdx].value
                     : '';
-                const total = spotsRaw.includes('/') ? spotsRaw.split('/')[1].replace(/\*/g, '').trim() : spotsRaw.replace(/\*/g, '').trim();
-                const currentSpots = total;
+                const currentSpots = spotsRaw.includes('/') ? spotsRaw.split('/')[1].replace(/\*/g, '').trim() : spotsRaw.replace(/\*/g, '').trim();
 
                 const modal = new ModalBuilder()
                     .setCustomId(`modal_edit_match_${originalMatchMessage.id}`)
