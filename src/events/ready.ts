@@ -3,6 +3,7 @@ import { config } from '../config/env';
 import * as commandCreateMatch from '../commands/create-match';
 import * as commandApodo from '../commands/apodo';
 import * as commandApodoBorrar from '../commands/apodo-borrar';
+import * as commandConfigurarRol from '../commands/configurar-rol';
 
 export function setupReadyEvent(client: Client) {
     client.once(Events.ClientReady, async () => {
@@ -16,7 +17,8 @@ export function setupReadyEvent(client: Client) {
                 { body: [
                     commandCreateMatch.data.toJSON(),
                     commandApodo.data.toJSON(),
-                    commandApodoBorrar.data.toJSON()
+                    commandApodoBorrar.data.toJSON(),
+                    commandConfigurarRol.data.toJSON()
                 ] },
             );
             console.log('✅ Commands registered successfully!');
