@@ -1,8 +1,9 @@
-import { ModalSubmitInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { ModalSubmitInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActionRowData, MessageActionRowComponentBuilder } from 'discord.js';
 import { getRandomFootballImage } from '../services/unsplash.service';
 import { getNickname, refreshPlayerListNicknames } from '../services/nickname.service';
 import { saveActiveMatch } from '../services/match.service';
 import { parseMatchDate, isDateInPast, isValidSpots, getDiscordTimestamp, EMPTY_LIST_MSG, parseAvailableSpots, updateSpotsField, countPlayers } from '../services/validation.service';
+import { getGuildRole } from '../services/guild.service';
 
 export const handleModals = async (interaction: ModalSubmitInteraction) => {
     if (interaction.customId === 'modal_add_guests') {
@@ -168,14 +169,23 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
                 const imageUrl = await getRandomFootballImage();
                 if (imageUrl) matchEmbed.setImage(imageUrl);
 
-                await interaction.editReply({
-                    embeds: [matchEmbed],
-                    components: [actionRow]
-                });
-
                 if (interaction.guild) {
+                    const roleId = await getGuildRole(interaction.guild.id);
+                    const mentionContent = roleId ? `<@&${roleId}> ¡Hay un nuevo partido! ⚽` : undefined;
+
+                    await interaction.editReply({
+                        content: mentionContent,
+                        embeds: [matchEmbed],
+                        components: [actionRow]
+                    });
+
                     const message = await interaction.fetchReply();
                     await saveActiveMatch(message.id, interaction.channelId!, interaction.guild.id);
+                } else {
+                    await interaction.editReply({
+                        embeds: [matchEmbed],
+                        components: [actionRow]
+                    });
                 }
             } catch (err) {
                 console.error('Error al crear el partido:', err);
@@ -223,8 +233,8 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
                 matchEmbed.setImage(originalEmbed.data.image.url);
             }
 
-            const oldActionRow = originalMatchMessage.components[0];
-            await originalMatchMessage.edit({ embeds: [matchEmbed], components: [oldActionRow as any] });
+            const oldActionRow = originalMatchMessage.components[0] as unknown as ActionRowData<MessageActionRowComponentBuilder>;
+            await originalMatchMessage.edit({ embeds: [matchEmbed], components: [oldActionRow] });
             await interaction.reply({ content: '✅ ¡Detalles del partido actualizados exitosamente!', ephemeral: true });
         }
     }
