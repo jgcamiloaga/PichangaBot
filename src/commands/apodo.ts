@@ -1,6 +1,6 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, TextChannel } from 'discord.js';
-import { saveNickname, refreshPlayerListNicknames } from '../services/nickname.service';
-import { getActiveMatches } from '../services/match.service';
+import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
+import { saveNickname } from '../services/nickname.service';
+import { refreshAllActiveMatchEmbeds } from '../services/match.service';
 
 export const data = new SlashCommandBuilder()
     .setName('apodo')
@@ -24,46 +24,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     try {
         await saveNickname(interaction.guild.id, interaction.user.id, nickname);
         await interaction.reply({ content: `✅ ¡Tu apodo ha sido guardado como **"${nickname}"**! A partir de ahora aparecerás así en las listas de las pichangas de este servidor.`, ephemeral: true });
-
-        const activeMatches = await getActiveMatches(interaction.guild.id);
-        for (const matchDef of activeMatches) {
-            try {
-                const channel = interaction.client.channels.cache.get(matchDef.channelId) || await interaction.client.channels.fetch(matchDef.channelId);
-                if (channel && channel.isTextBased()) {
-                    const textChannel = channel as TextChannel;
-                    const fetchResult = await textChannel.messages.fetch({ message: matchDef.messageId, force: true });
-                    const matchMsg = Array.isArray(fetchResult) ? null : fetchResult;
-
-                    if (matchMsg && matchMsg.embeds.length > 0) {
-                        const embed = EmbedBuilder.from(matchMsg.embeds[0]);
-                        const fieldIndex = embed.data.fields?.findIndex(f => f.name === '📋 Lista de Jugadores');
-
-                        if (fieldIndex !== undefined && fieldIndex !== -1 && embed.data.fields) {
-                            const currentPlayers = embed.data.fields[fieldIndex].value;
-                            const newPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
-                            
-                            if (currentPlayers !== newPlayers) {
-                                console.log(`[Apodo] Actualizando embed del mensaje ${matchDef.messageId}`);
-                                const updatedFields = embed.data.fields.map(f => {
-                                    if (f.name === '📋 Lista de Jugadores') {
-                                        return { ...f, value: newPlayers };
-                                    }
-                                    return f;
-                                });
-                                embed.setFields(updatedFields);
-
-                                await matchMsg.edit({ embeds: [embed] });
-                            } else {
-                                console.log(`[Apodo] Sin cambios necesarios en mensaje ${matchDef.messageId}`);
-                                console.log(`   -> Contenido actual: ${currentPlayers.replace(/\n/g, '\\n')}`);
-                            }
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error(`Error actualizando partido activo ${matchDef.messageId}:`, err);
-            }
-        }
+        await refreshAllActiveMatchEmbeds(interaction.client, interaction.guild.id);
     } catch (error) {
         console.error('Error al guardar el apodo:', error);
         if (!interaction.replied) {
