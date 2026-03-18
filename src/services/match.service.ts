@@ -70,8 +70,13 @@ export const refreshAllActiveMatchEmbeds = async (client: Client, guildId: strin
                 embed.setFields(updatedFields);
                 await matchMsg.edit({ embeds: [embed] });
             }
-        } catch (err) {
-            console.error(`Error actualizando partido activo ${matchDef.messageId}:`, err);
+        } catch (err: any) {
+            if (err?.code === 10003 || err?.code === 10008) {
+                console.warn(`Partido activo ${matchDef.messageId} apunta a un canal/mensaje inexistente. Eliminando registro...`);
+                await deleteActiveMatch(matchDef.messageId);
+            } else {
+                console.error(`Error actualizando partido activo ${matchDef.messageId}:`, err);
+            }
         }
     }
 };
