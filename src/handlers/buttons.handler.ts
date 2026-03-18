@@ -3,6 +3,7 @@ import { getNickname, refreshPlayerListNicknames } from '../services/nickname.se
 import { extractUnixFromDiscordTimestamp, EMPTY_LIST_MSG, parseAvailableSpots, updateSpotsField } from '../services/validation.service';
 
 export const handleButtons = async (interaction: ButtonInteraction) => {
+  try {
     const originalEmbed = interaction.message.embeds[0];
     const updatedEmbed = EmbedBuilder.from(originalEmbed);
 
@@ -151,4 +152,15 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
         updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
         await interaction.update({ embeds: [updatedEmbed] });
     }
+  } catch (err: any) {
+    console.error('Error en handleButtons:', err);
+    try {
+      const msg = { content: '❌ Ocurrió un error inesperado. Por favor intenta de nuevo.', ephemeral: true };
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply(msg);
+      } else {
+        await interaction.followUp(msg);
+      }
+    } catch { /* la interacción ya expiró, no hay nada que hacer */ }
+  }
 };
