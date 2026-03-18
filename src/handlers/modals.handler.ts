@@ -77,7 +77,11 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
                 updatedEmbed.data.fields[spotsFieldIndex].value = updateSpotsField(updatedEmbed.data.fields[spotsFieldIndex].value, -slotsNeeded);
             }
 
-            await interaction.editReply({ embeds: [updatedEmbed] });
+            if (interaction.isFromMessage()) {
+                await interaction.editReply({ embeds: [updatedEmbed] });
+            } else {
+                await interaction.reply({ content: '✅ ¡Invitados agregados!', ephemeral: true });
+            }
         }
         return;
     }
@@ -197,11 +201,14 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             try {
                 const fetched = await interaction.channel?.messages.fetch(matchId);
                 if (fetched) originalMatchMessage = fetched;
-            } catch (e) {
+            } catch (e: any) {
                 console.error('Error fetching original message', e);
             }
 
-            if (!originalMatchMessage) return;
+            if (!originalMatchMessage) {
+                await interaction.reply({ content: '❌ No se encontró el mensaje del partido. Puede que haya sido eliminado.', ephemeral: true });
+                return;
+            }
 
             const originalEmbed = originalMatchMessage.embeds[0];
             const playersField = originalEmbed.data.fields?.find(f => f.name === '📋 Lista de Jugadores');
