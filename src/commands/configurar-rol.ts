@@ -25,7 +25,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.guild) {
-        await interaction.reply({ content: 'Este comando solo puede usarse dentro de un servidor.', ephemeral: true });
+        await interaction.reply({ content: 'Este comando solo puede usarse dentro de un servidor.', flags: 64 });
         return;
     }
 
@@ -36,7 +36,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await setGuildRole(interaction.guild.id, role.id);
         await interaction.reply({
             content: `✅ ¡Listo! A partir de ahora, al crear un nuevo partido se mencionará a **${role.name}**.`,
-            ephemeral: true
+            flags: 64
         });
 
     } else if (subcommand === 'ver') {
@@ -44,12 +44,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         if (!roleId) {
             await interaction.reply({
                 content: '⚙️ No hay ningún rol configurado. Los partidos se crean sin mención.',
-                ephemeral: true
+                flags: 64
             });
         } else {
             await interaction.reply({
                 content: `⚙️ El rol configurado para notificaciones es: <@&${roleId}>`,
-                ephemeral: true
+                flags: 64
             });
         }
 
@@ -58,14 +58,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         if (!existingRoleId) {
             await interaction.reply({
                 content: '⚙️ No hay ningún rol configurado. No hay nada que borrar.',
-                ephemeral: true
+                flags: 64
             });
             return;
         }
         await clearGuildRole(interaction.guild.id);
         await interaction.reply({
             content: '✅ Rol eliminado. Los partidos se crearán sin mencionar a nadie.',
-            ephemeral: true
+            flags: 64
         });
     }
 }
