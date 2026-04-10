@@ -1,9 +1,28 @@
-import { ButtonInteraction, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
-import { getNickname, refreshPlayerListNicknames } from '../services/nickname.service';
+import { ButtonInteraction, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, InteractionReplyOptions } from 'discord.js';
+import { getNicknameCached, refreshPlayerListNicknames } from '../services/nickname.service';
 import { extractUnixFromDiscordTimestamp, EMPTY_LIST_MSG, parseAvailableSpots, updateSpotsField } from '../services/validation.service';
+import { withMessageLock } from '../services/lock.service';
 
 export const handleButtons = async (interaction: ButtonInteraction) => {
   try {
+        const ephemeralFlags = 64;
+        const safeReply = async (options: InteractionReplyOptions) => {
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply(options);
+            }
+        };
+        const safeFollowUp = async (options: InteractionReplyOptions) => {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp(options);
+            } else {
+                await interaction.reply(options);
+            }
+        };
+        const ensureDeferred = async () => {
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.deferUpdate();
+            }
+        };
     const originalEmbed = interaction.message.embeds[0];
     const updatedEmbed = EmbedBuilder.from(originalEmbed);
 
@@ -26,9 +45,9 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
                         'btn_leave':      '🔒 **Este partido ya ha terminado.** No puedes bajarte de un partido finalizado.',
                         'btn_add_guests': '🔒 **Este partido ya ha terminado.** No puedes agregar invitados a un partido finalizado.',
                     };
-                    await interaction.reply({
+                    await safeReply({
                         content: finishedMessages[interaction.customId],
-                        ephemeral: true
+                        flags: ephemeralFlags
                     });
                     return;
                 }
@@ -36,20 +55,22 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
         }
 
         if (interaction.customId === 'btn_join') {
+            await ensureDeferred();
+
             if (currentPlayers.includes(`• ${userMention}`)) {
                 if (interaction.guild) {
                     currentPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
                     updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
                 }
-                await interaction.update({ embeds: [updatedEmbed] });
-                await interaction.followUp({ content: '¡Ya estás en la lista, crack! ⚽ (Lista actualizada)', ephemeral: true });
+                await interaction.editReply({ embeds: [updatedEmbed] });
+                await interaction.followUp({ content: '¡Ya estás en la lista, crack! ⚽ (Lista actualizada)', flags: ephemeralFlags });
                 return;
             }
 
             if (spotsFieldIndex !== undefined && spotsFieldIndex !== -1) {
                 const available = parseAvailableSpots(updatedEmbed.data.fields[spotsFieldIndex].value);
                 if (!isNaN(available) && available <= 0) {
-                    await interaction.reply({ content: '¡Lo siento! Ya no quedan cupos para este partido. 😢', ephemeral: true });
+                    await interaction.followUp({ content: '¡Lo siento! Ya no quedan cupos para este partido. 😢', flags: ephemeralFlags });
                     return;
                 }
             }
@@ -57,7 +78,7 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
             let playerEntry = userMention;
 
             if (interaction.guild) {
-                const nickname = await getNickname(interaction.guild.id, interaction.user.id);
+                const nickname = await getNicknameCached(interaction.guild.id, interaction.user.id);
                 if (nickname) {
                     playerEntry += ` (${nickname})`;
                 }
@@ -74,8 +95,10 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
             }
         }
         else if (interaction.customId === 'btn_leave') {
+            await ensureDeferred();
+
             if (!currentPlayers.includes(`• ${userMention}`)) {
-                await interaction.reply({ content: 'No estás en la lista, no puedes bajarte. 😅', ephemeral: true });
+                await interaction.followUp({ content: 'No estás en la lista, no puedes bajarte. 😅', flags: ephemeralFlags });
                 return;
             }
 
@@ -116,12 +139,12 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
         else if (interaction.customId.startsWith('btn_edit_')) {
             const organizerId = interaction.customId.replace('btn_edit_', '');
             if (interaction.user.id !== organizerId) {
-                await interaction.reply({ content: 'Solo el organizador puede editar este partido. 🚫', ephemeral: true });
+                await interaction.reply({ content: 'Solo el organizador puede editar este partido. 🚫', flags: ephemeralFlags });
                 return;
             }
 
             const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId('sel_edit_match')
+                .setCustomId(`sel_edit_match:${interaction.message.id}`)
                 .setPlaceholder('¿Qué deseas hacer?')
                 .addOptions(
                     new StringSelectMenuOptionBuilder()
@@ -141,21 +164,31 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
             await interaction.reply({
                 content: '¿Qué opción te gustaría modificar en tu partido?',
                 components: [selectRow],
-                ephemeral: true
+                flags: ephemeralFlags
             });
             return;
         }
 
-        if (interaction.guild) {
-            currentPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
-        }
-        updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
-        await interaction.update({ embeds: [updatedEmbed] });
+        await ensureDeferred();
+
+        await withMessageLock(interaction.message.id, async () => {
+            if (interaction.guild) {
+                currentPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
+            }
+            updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
+
+            if (interaction.deferred) {
+                await interaction.editReply({ embeds: [updatedEmbed] });
+            } else {
+                // Unlikely to reach here without being deferred or returned, but just in case
+                await interaction.update({ embeds: [updatedEmbed] });
+            }
+        });
     }
   } catch (err: any) {
     console.error('Error en handleButtons:', err);
     try {
-      const msg = { content: '❌ Ocurrió un error inesperado. Por favor intenta de nuevo.', ephemeral: true };
+            const msg = { content: '❌ Ocurrió un error inesperado. Por favor intenta de nuevo.', flags: 64 };
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply(msg);
       } else {
