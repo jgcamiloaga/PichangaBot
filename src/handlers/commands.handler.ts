@@ -11,7 +11,7 @@ export const handleCommands = async (interaction: ChatInputCommandInteraction) =
         } catch (error) {
             console.error('Error in crear-partido:', error);
             if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: 'Hubo un error ejecutando el comando crear-partido.', ephemeral: true });
+                await interaction.reply({ content: 'Hubo un error ejecutando el comando crear-partido.', flags: 64 });
             }
         }
     } else if (interaction.commandName === 'apodo') {
@@ -20,7 +20,7 @@ export const handleCommands = async (interaction: ChatInputCommandInteraction) =
         } catch (error) {
              console.error('Error in apodo:', error);
              if (!interaction.replied && !interaction.deferred) {
-                 await interaction.reply({ content: 'Hubo un error ejecutando el comando apodo.', ephemeral: true });
+                 await interaction.reply({ content: 'Hubo un error ejecutando el comando apodo.', flags: 64 });
              }
         }
     } else if (interaction.commandName === 'apodo-borrar') {
@@ -29,7 +29,7 @@ export const handleCommands = async (interaction: ChatInputCommandInteraction) =
         } catch (error) {
              console.error('Error in apodo-borrar:', error);
              if (!interaction.replied && !interaction.deferred) {
-                 await interaction.reply({ content: 'Hubo un error ejecutando el comando apodo-borrar.', ephemeral: true });
+                 await interaction.reply({ content: 'Hubo un error ejecutando el comando apodo-borrar.', flags: 64 });
              }
         }
     } else if (interaction.commandName === 'configurar-rol') {
@@ -38,7 +38,7 @@ export const handleCommands = async (interaction: ChatInputCommandInteraction) =
         } catch (error) {
              console.error('Error in configurar-rol:', error);
              if (!interaction.replied && !interaction.deferred) {
-                 await interaction.reply({ content: 'Hubo un error ejecutando el comando configurar-rol.', ephemeral: true });
+                 await interaction.reply({ content: 'Hubo un error ejecutando el comando configurar-rol.', flags: 64 });
              }
         }
     }
