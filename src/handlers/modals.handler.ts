@@ -1,9 +1,10 @@
 import { ModalSubmitInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActionRowData, MessageActionRowComponentBuilder } from 'discord.js';
 import { getRandomFootballImage } from '../services/unsplash.service';
-import { getNickname, refreshPlayerListNicknames } from '../services/nickname.service';
+import { getNicknameCached, refreshPlayerListNicknames } from '../services/nickname.service';
 import { saveActiveMatch } from '../services/match.service';
 import { parseMatchDate, isDateInPast, isValidSpots, getDiscordTimestamp, EMPTY_LIST_MSG, parseAvailableSpots, updateSpotsField, countPlayers } from '../services/validation.service';
 import { getGuildRole } from '../services/guild.service';
+import { withMessageLock } from '../services/lock.service';
 
 export const handleModals = async (interaction: ModalSubmitInteraction) => {
     if (interaction.customId === 'modal_add_guests') {
@@ -11,12 +12,12 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
         const guestsCount = parseInt(guestsCountStr, 10);
 
         if (isNaN(guestsCount) || guestsCount <= 0) {
-            await interaction.reply({ content: '❌ Por favor, ingresa un número válido mayor a 0. 😅', ephemeral: true });
+            await interaction.reply({ content: '❌ Por favor, ingresa un número válido mayor a 0. 😅', flags: 64 });
             return;
         }
 
         if (guestsCount > 10) {
-            await interaction.reply({ content: '❌ No puedes llevar más de **10 invitados** a la vez. 😅', ephemeral: true });
+            await interaction.reply({ content: '❌ No puedes llevar más de **10 invitados** a la vez. 😅', flags: 64 });
             return;
         }
 
@@ -41,7 +42,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
                     const msg = alreadyInList
                         ? `¡Lo siento! Solo quedan **${available}** cupos disponibles. No puedes llevar a ${guestsCount} invitados. 😢`
                         : `¡Lo siento! Solo quedan **${available}** cupos disponibles (incluyendo el tuyo). No puedes llevar a ${guestsCount} invitados. 😢`;
-                    await interaction.reply({ content: msg, ephemeral: true });
+                    await interaction.reply({ content: msg, flags: 64 });
                     return;
                 }
             }
@@ -57,7 +58,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             if (!alreadyInList) {
                 let playerEntry = userMention;
                 if (interaction.guild) {
-                    const nickname = await getNickname(interaction.guild.id, interaction.user.id);
+                    const nickname = await getNicknameCached(interaction.guild.id, interaction.user.id);
                     if (nickname) playerEntry += ` (${nickname})`;
                 }
                 currentPlayers += (currentPlayers ? '\n' : '') + `• ${playerEntry}`;
@@ -78,9 +79,11 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             }
 
             if (interaction.isFromMessage()) {
-                await interaction.editReply({ embeds: [updatedEmbed] });
+                await withMessageLock(interaction.message!.id, async () => {
+                    await interaction.editReply({ embeds: [updatedEmbed] });
+                });
             } else {
-                await interaction.reply({ content: '✅ ¡Invitados agregados!', ephemeral: true });
+                await interaction.reply({ content: '✅ ¡Invitados agregados!', flags: 64 });
             }
         }
         return;
@@ -100,7 +103,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
         if (!parsedDate) {
             await interaction.reply({
                 content: '❌ **Formato de fecha inválido.**\nUsa el formato `DD/MM/YYYY HH:mm`\nEjemplo: `15/03/2025 18:30`',
-                ephemeral: true
+                flags: 64
             });
             return;
         }
@@ -108,7 +111,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
         if (isDateInPast(parsedDate)) {
             await interaction.reply({
                 content: '❌ **No puedes crear un partido en el pasado.**\nElige una fecha y hora futura.',
-                ephemeral: true
+                flags: 64
             });
             return;
         }
@@ -116,7 +119,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
         if (!isValidSpots(spotsRaw)) {
             await interaction.reply({
                 content: '❌ **Cantidad de jugadores inválida.**\nDebe ser un número entero entre **2 y 50**.',
-                ephemeral: true
+                flags: 64
             });
             return;
         }
@@ -196,6 +199,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
                 await interaction.editReply({ content: '❌ Ocurrió un error al crear el partido. Por favor intenta de nuevo.' });
             }
         } else if (isEdit) {
+            await interaction.deferReply({ flags: 64 });
             const matchId = interaction.customId.replace('modal_edit_match_', '');
             let originalMatchMessage = interaction.message;
             try {
@@ -206,7 +210,7 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             }
 
             if (!originalMatchMessage) {
-                await interaction.reply({ content: '❌ No se encontró el mensaje del partido. Puede que haya sido eliminado.', ephemeral: true });
+                await interaction.editReply({ content: '❌ No se encontró el mensaje del partido. Puede que haya sido eliminado.' });
                 return;
             }
 
@@ -216,9 +220,8 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             if (playersField) {
                 const currentPlayerCount = countPlayers(playersField.value);
                 if (spots < currentPlayerCount) {
-                    await interaction.reply({
+                    await interaction.editReply({
                         content: `❌ **No puedes reducir los cupos a ${spots}.** Ya hay **${currentPlayerCount}** jugadores inscritos. El mínimo permitido es **${currentPlayerCount}**.`,
-                        ephemeral: true
                     });
                     return;
                 }
@@ -241,8 +244,10 @@ export const handleModals = async (interaction: ModalSubmitInteraction) => {
             }
 
             const oldActionRow = originalMatchMessage.components[0] as unknown as ActionRowData<MessageActionRowComponentBuilder>;
-            await originalMatchMessage.edit({ embeds: [matchEmbed], components: [oldActionRow] });
-            await interaction.reply({ content: '✅ ¡Detalles del partido actualizados exitosamente!', ephemeral: true });
+            await withMessageLock(originalMatchMessage.id, async () => {
+                await originalMatchMessage.edit({ embeds: [matchEmbed], components: [oldActionRow] });
+            });
+            await interaction.editReply({ content: '✅ ¡Detalles del partido actualizados exitosamente!' });
         }
     }
 };
