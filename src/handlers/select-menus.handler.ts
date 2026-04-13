@@ -1,21 +1,37 @@
 import { StringSelectMenuInteraction, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
 import { getRandomFootballImage } from '../services/unsplash.service';
 import { extractUnixFromDiscordTimestamp, formatDateForInput } from '../services/validation.service';
+import { withMessageLock } from '../services/lock.service';
 
 export const handleSelectMenus = async (interaction: StringSelectMenuInteraction) => {
-    if (interaction.customId === 'sel_edit_match') {
+    if (interaction.customId.startsWith('sel_edit_match')) {
+        const [, messageId] = interaction.customId.split(':');
+        if (!messageId) {
+            await interaction.reply({ content: 'No pude identificar el partido original.', flags: 64 });
+            return;
+        }
         const selectedOption = interaction.values[0];
 
-        if (!interaction.message.reference?.messageId) {
-            await interaction.reply({ content: 'No pude encontrar el partido original.', ephemeral: true });
+        const channel = interaction.channel;
+        if (!channel || !channel.isTextBased()) {
+            await interaction.reply({ content: 'No pude acceder al canal del partido.', flags: 64 });
             return;
         }
 
         try {
-            const originalMatchMessage = await interaction.channel?.messages.fetch(interaction.message.reference.messageId);
+            const cachedMessage = channel.messages.cache.get(messageId);
+            const fetchWithTimeout = async () => {
+                const fetchPromise = channel.messages.fetch(messageId);
+                const timeoutPromise = new Promise<null>((resolve) => {
+                    setTimeout(() => resolve(null), 1500);
+                });
+                return (await Promise.race([fetchPromise, timeoutPromise])) ?? null;
+            };
+
+            const originalMatchMessage = cachedMessage ?? await fetchWithTimeout();
 
             if (!originalMatchMessage || !originalMatchMessage.embeds.length) {
-                 await interaction.reply({ content: 'El mensaje del partido ya no existe.', ephemeral: true });
+                 await interaction.reply({ content: 'El mensaje del partido ya no existe.', flags: 64 });
                  return;
             }
             
@@ -67,7 +83,9 @@ export const handleSelectMenus = async (interaction: StringSelectMenuInteraction
                 try {
                     const newImageUrl = await getRandomFootballImage();
                     updatedEmbed.setImage(newImageUrl);
-                    await originalMatchMessage.edit({ embeds: [updatedEmbed] });
+                    await withMessageLock(originalMatchMessage.id, async () => {
+                        await originalMatchMessage.edit({ embeds: [updatedEmbed] });
+                    });
                     await interaction.editReply({ content: '✅ Imagen actualizada correctamente en el partido.', components: [] });
                 } catch (imgError) {
                     console.error('Error al cambiar imagen:', imgError);
@@ -78,7 +96,7 @@ export const handleSelectMenus = async (interaction: StringSelectMenuInteraction
         } catch (e) {
             console.error('Error en sel_edit_match:', e);
             if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: 'Hubo un error al acceder al mensaje del partido.', ephemeral: true });
+                await interaction.reply({ content: 'Hubo un error al acceder al mensaje del partido.', flags: 64 });
             }
         }
     }
