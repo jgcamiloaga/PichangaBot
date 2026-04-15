@@ -11,19 +11,16 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
                 await interaction.reply(options);
             }
         };
-        const safeFollowUp = async (options: InteractionReplyOptions) => {
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp(options);
-            } else {
-                await interaction.reply(options);
-            }
-        };
         const ensureDeferred = async () => {
             if (!interaction.replied && !interaction.deferred) {
                 await interaction.deferUpdate();
             }
         };
     const originalEmbed = interaction.message.embeds[0];
+    if (!originalEmbed) {
+        await safeReply({ content: 'Este mensaje no tiene un embed valido para actualizar.', flags: ephemeralFlags });
+        return;
+    }
     const updatedEmbed = EmbedBuilder.from(originalEmbed);
 
     const fieldIndex = updatedEmbed.data.fields?.findIndex(field => field.name === '📋 Lista de Jugadores');
@@ -174,6 +171,9 @@ export const handleButtons = async (interaction: ButtonInteraction) => {
         await withMessageLock(interaction.message.id, async () => {
             if (interaction.guild) {
                 currentPlayers = await refreshPlayerListNicknames(currentPlayers, interaction.guild.id);
+            }
+            if (!updatedEmbed.data.fields) {
+                return;
             }
             updatedEmbed.data.fields[fieldIndex].value = currentPlayers;
 
